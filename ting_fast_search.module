@@ -1,0 +1,124 @@
+<?php
+
+/* 
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+use OpenSearch\OpenSearchTingObjectCollection;
+
+function ting_fast_search_theme($existing, $type, $theme, $path) {
+  return array(
+      'ting_fast_search_item' => array(
+          'variables' => array(
+              'title' => NULL,
+              'creators' => NULL,
+              'abstract' => NULL,
+              'cover' => NULL,
+              'series' => NULL,
+              'types' => NULL,
+              'maintype' => NULL,
+          ),
+          'template' => 'ting-fast-search',
+          'path' => $path . '/templates',
+      ),
+  );
+}
+
+function ting_fast_search_proces_results($search_result) {
+  $results = array();
+  file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch17.txt", print_r("Ramt", TRUE), FILE_APPEND);
+  foreach ($search_result->openSearchResult->collections as $collection) {
+    $opensearch_collection = new OpenSearchTingObjectCollection($collection);
+
+    drupal_add_js(drupal_get_path('module', 'ting_covers') . '/js/ting-covers.js');
+    $object = $opensearch_collection->getPrimaryObject();
+    $title = ting_fast_search_get_title($object); 
+    $creators = ting_fast_search_get_creators($object); 
+    $cover = ting_fast_search_get_cover($object);
+    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch19.txt", print_r($title, TRUE), FILE_APPEND);
+    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch22.txt", print_r($creators, TRUE), FILE_APPEND); 
+    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch23.txt", print_r($cover , TRUE), FILE_APPEND);
+    
+    $snippet = theme ('ting_fast_search_item',array('title' => $title, 'creators' => $creators, 'cover' => $cover));
+    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch16.txt", print_r($snippet, TRUE), FILE_APPEND);
+
+
+    $uri = ting_fast_search_uri($object); 
+    $results[] = array(
+        'link' => url($uri['path'], array()),
+        'type' => '',
+        'title' => $object->getShortTitle(),
+        'user' => '',
+        'date' => '',
+        'snippet' => $snippet,
+    );
+  }
+  return $results;
+}
+
+function ting_fast_search_get_title($object) {
+   $title = $object->getTitle();
+   $url = url(ting_fast_search_uri($object));
+   return '<a href="' . $url . '">' .  $title  .'</a>';
+}
+  
+
+function ting_fast_search_get_creators($object) {
+  $search_string = variable_get('ting_search_register_author', 'phrase.creator="@author"');
+  $creators = $object->getCreators();
+
+  //file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch20.txt", print_r($creators, TRUE), FILE_APPEND);
+  $creator_links = array();
+  foreach ($creators  as $creator) {
+      $creator_links[] = ting_field_search_link($creator, $search_string, array('@author' => $creator), array(
+        'attributes' => array(
+            'class' => array('author'),
+        ),
+    ));
+  }
+  //file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch21.txt", print_r($creator_links, TRUE), FILE_APPEND);
+  $date = $object->getYear(); 
+  $markup_string = '';
+  if (count($creators)) {
+    if ($date  != '') {
+      $markup_string = t('By !author_link (@year)', array(
+          '!author_link' => implode(', ', $creator_links),
+          // So wrong, but appears to be the way the data is.
+          '@year' => $date ,
+      ));
+    } else {
+      $markup_string = t('By !author_link', array(
+          '!author_link' => implode(', ', $creator_links),
+      ));
+    }
+  } elseif ($date  != '') {
+    $markup_string = t('(@year)', array('@year' => $date ));
+  }
+  return $markup_string;
+}
+
+function ting_fast_search_get_abstract($object) {
+  
+}
+function ting_fast_search_get_cover($object) {
+  $genericObject = new stdClass();
+  $genericObject->id = $object->getId();
+  $genericObject->title = $object->getShortTitle();
+  $genericObject->creators = $object->getCreators;
+  $image = theme('ting_object_cover', array('elements' => array('#object' => $genericObject, '#image_style' => 'ding_list_medium')));
+  $options = array(
+      'html' => TRUE,
+      'attributes' => array('title' => $object->getShortTitle()),
+  );
+  $image = '<div id="ting-object-ting-object-search-result-group-ting-left-col-search" class="ting-object-left group-ting-left-col-search field-group-div field-group-format group-ting-left-col-search">' . $image . '</div>';
+  return l($image, ting_fast_search_uri($object), $options);
+}
+
+function ting_fast_search_get_series($object) {
+  
+}
+
+function ting_fast_search_uri($object) {
+  return 'ting/collection/' . $object->id;
+}
