@@ -22,12 +22,20 @@ function ting_fast_search_theme($existing, $type, $theme, $path) {
           'template' => 'ting-fast-search',
           'path' => $path . '/templates',
       ),
+      'ting_fast_search_series' => array(
+          'variables' => array(
+              'cover' => NULL,
+              'series' => NULL,
+          ),
+          'template' => 'ting-fast-search-series',
+          'path' => $path . '/templates',
+      ),
   );
 }
 
 function ting_fast_search_proces_results($search_result) {
   $results = array();
-  file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch17.txt", print_r("Ramt", TRUE), FILE_APPEND);
+  //file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch17.txt", print_r("Ramt", TRUE), FILE_APPEND);
   foreach ($search_result->openSearchResult->collections as $collection) {
     $opensearch_collection = new OpenSearchTingObjectCollection($collection);
 
@@ -36,12 +44,16 @@ function ting_fast_search_proces_results($search_result) {
     $title = ting_fast_search_get_title($object); 
     $creators = ting_fast_search_get_creators($object); 
     $cover = ting_fast_search_get_cover($object);
-    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch19.txt", print_r($title, TRUE), FILE_APPEND);
-    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch22.txt", print_r($creators, TRUE), FILE_APPEND); 
-    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch23.txt", print_r($cover , TRUE), FILE_APPEND);
+    $abstract = ting_fast_search_get_abstract($object);
+    $series = ting_fast_search_get_series($object);
+    $types = ting_fast_search_get_types($opensearch_collection->getObjects());
+//    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch19.txt", print_r($title, TRUE), FILE_APPEND);
+//    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch22.txt", print_r($creators, TRUE), FILE_APPEND); 
+//    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch23.txt", print_r($cover , TRUE), FILE_APPEND);
+//    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch28.txt", print_r($series  , TRUE), FILE_APPEND);
     
-    $snippet = theme ('ting_fast_search_item',array('title' => $title, 'creators' => $creators, 'cover' => $cover));
-    file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch16.txt", print_r($snippet, TRUE), FILE_APPEND);
+    $snippet = theme ('ting_fast_search_item', array('title' => $title, 'creators' => $creators, 'cover' => $cover, 'abstract' => $abstract, 'series' => $series, 'types' => $types['links'], 'maintype' => $types['maintype']));
+    //file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch16.txt", print_r($snippet, TRUE), FILE_APPEND);
 
 
     $uri = ting_fast_search_uri($object); 
@@ -99,7 +111,7 @@ function ting_fast_search_get_creators($object) {
 }
 
 function ting_fast_search_get_abstract($object) {
-  
+   return add_ellipsis($object->getAbstract(), 330);
 }
 function ting_fast_search_get_cover($object) {
   $genericObject = new stdClass();
@@ -116,7 +128,56 @@ function ting_fast_search_get_cover($object) {
 }
 
 function ting_fast_search_get_series($object) {
-  
+  $markup;
+  if ($object->getSeriesTitles()) {
+    // The search string used is configurable because the data well is not
+    // fully implemented regarding series. As default we search both in
+    // the series title register and the description field because many
+    // series only have data in the description field. This will probably
+    // change with new versions of the data well.
+    foreach ($object->getSeriesTitles() as $title) {
+      $series_title = $title[0];
+      $series_number = isset($title[1]) ? ' : ' . check_plain($title[1]) . ' ; ' : ' ; ';
+
+      $replacement = array('@serietitle' => drupal_strtolower($series_title));
+      $search_string = variable_get('ting_search_register_serie_title', 'phrase.titleSeries="@serietitle"');
+      $link = ting_field_search_link(trim($series_title), $search_string, $replacement, array('attributes' => array('class' => array('series'))));
+
+      $markup = $link . $series_number;
+    }
+  } elseif ($object->serieDescription) {
+    $markup = $object->serieDescription;
+  }
+  if (isset($markup)) {
+    $markup = theme ('ting_fast_search_series', array('series' => $markup));
+  }
+  return $markup;
+}
+
+function ting_fast_search_get_types($objects) {
+  $result = array();
+  $types = array();
+
+  // Sort entities into type -> ids.
+  foreach ($objects as $object) {
+    $types[$object->getType()][] = $object;
+  }
+  //file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch29.txt", print_r($types , TRUE), FILE_APPEND);
+  foreach ($types as $type => $typed_objects) {
+    if (count($typed_objects) == 1) {
+      $url = 'ting/object/' . $typed_objects[0]->getId();
+    } else {
+      $url = 'ting/collection/' . $typed_objects[0]->getId();
+    }
+    $result['links'][] = l($type, $url);
+  }
+  if (count($types) == 1) {
+    //file_put_contents("/var/www/drupalvm/drupal/debug/fastsearch31.txt", print_r($result , TRUE), FILE_APPEND);
+    $result['maintype'] = key($types);
+  } else {
+    $result['maintype'] = 'Findes på flere medier';
+  }
+  return $result;
 }
 
 function ting_fast_search_uri($object) {
